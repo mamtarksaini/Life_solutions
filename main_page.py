@@ -147,8 +147,8 @@ def main_page():
             "intent": "sale",
             "payer": {"payment_method": "paypal"},
             "redirect_urls": {
-                "return_url": "http://localhost:8501",
-                "cancel_url": "http://localhost:8501"
+                "return_url": "https://shrikrishna.streamlit.app/success",
+                "cancel_url": "https://shrikrishna.streamlit.app/cancel"
             },
             "transactions": [{
                 "amount": {"total": str(SUBSCRIPTION_COST), "currency": "USD"},
