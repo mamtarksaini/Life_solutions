@@ -67,7 +67,7 @@ def create_paypal_payment():
                     return link.href  
         else:
             st.error("❌ Failed to create PayPal payment.")
-            st.json(payment.error)
+            st.json(payment.error)  # ✅ Show PayPal error message
             return None
     except Exception as e:
         st.error(f"❌ PayPal API error: {str(e)}")
@@ -92,7 +92,6 @@ def payment_success():
         if payment.execute({"payer_id": payer_id}):  
             st.success("✅ Thank you for upgrading to Premium! Your subscription is now active.")
 
-            # 🔹 Extract transaction details
             transaction = payment["transactions"][0]["related_resources"][0]["sale"]
             transaction_id = transaction["id"]
             transaction_amount = transaction["amount"]["total"]
@@ -104,35 +103,36 @@ def payment_success():
                 st.error(f"⚠️ Payment failed! PayPal returned status: {transaction_status}")
                 return
 
-            # ✅ Show transaction details
             st.subheader("📜 Transaction Details:")
             st.write(f"**Transaction ID:** `{transaction_id}`")
             st.write(f"**Amount Paid:** `{transaction_amount} {transaction_currency}`")
             st.write(f"**Date & Time:** `{transaction_time}`")
 
-            email = st.session_state.get("email", "unknown_user")
+            email = st.session_state.get("email", None)
 
-            # ✅ Update Firestore User Plan
-            user_ref = db.collection("users").document(email)
-            user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
+            if email:
+                user_ref = db.collection("users").document(email)
+                user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
 
-            # ✅ Store Transaction Details in Firestore
-            transaction_ref = db.collection("transactions").document(transaction_id)
-            transaction_ref.set({
-                "email": email,
-                "transaction_id": transaction_id,
-                "amount": transaction_amount,
-                "currency": transaction_currency,
-                "status": "Completed",
-                "timestamp": transaction_time
-            })
+                transaction_ref = db.collection("transactions").document(transaction_id)
+                transaction_ref.set({
+                    "email": email,
+                    "transaction_id": transaction_id,
+                    "amount": transaction_amount,
+                    "currency": transaction_currency,
+                    "status": "Completed",
+                    "timestamp": transaction_time
+                })
 
-            st.success("✅ Transaction recorded successfully in Firestore!")
-            st.balloons()
+                st.success("✅ Transaction recorded successfully in Firestore!")
+                st.balloons()
 
-            if st.button("Return to App"):
-                st.session_state["current_page"] = "main_page"
-                st.rerun()
+                if st.button("Return to App"):
+                    st.session_state["current_page"] = "main_page"
+                    st.rerun()
+            else:
+                st.error("⚠️ User session not found. Cannot update Firestore.")
+
         else:
             st.error("⚠️ Payment execution failed. Please contact support.")
     except Exception as e:
@@ -143,14 +143,14 @@ def payment_cancel():
     st.title("❌ Payment Cancelled")
     st.warning("Your payment was not completed. You can try again anytime.")
 
-# ✅ AI Solution & TTS
+# ✅ Get AI-based Answer
 def get_gita_solution(problem, language="en"):
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     
     payload = {
         "contents": [
-            {"parts": [{"text": f"Based on the Bhagavad Gita Provide a solution for {problem} in {language} without mentioning the shloka."}]}
+            {"parts": [{"text": f"Based on the Bhagavad Gita, provide a solution for {problem} in {language} without mentioning the shloka."}]}
         ]
     }
 
@@ -165,6 +165,7 @@ def get_gita_solution(problem, language="en"):
     except Exception as e:
         return f"❌ API Error: {str(e)}"
 
+# ✅ Generate gTTS Audio Response
 def generate_audio_response(text, language="English"):
     language_map = {
         "English": "en", "Hindi": "hi", "Sanskrit": "sa", "Tamil": "ta", "Telugu": "te",
@@ -185,7 +186,13 @@ def generate_audio_response(text, language="English"):
 
 # ✅ Main Page
 def main_page():
+    if "email" not in st.session_state:
+        st.warning("Please log in again.")
+        return
+
+    email = st.session_state["email"]
     st.title("Bhagavad Gita Life Solutions 📖✨")
+
     problem = st.text_area("Describe your problem:")
     language = st.selectbox("Select a Language:", list(generate_audio_response.__annotations__.keys()))
 
