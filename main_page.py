@@ -67,7 +67,7 @@ def create_paypal_payment():
                     return link.href  
         else:
             st.error("❌ Failed to create PayPal payment.")
-            st.json(payment.error)  # ✅ Show PayPal error message
+            st.json(payment.error)
             return None
     except Exception as e:
         st.error(f"❌ PayPal API error: {str(e)}")
@@ -87,7 +87,6 @@ def payment_success():
         return
 
     try:
-        # ✅ Find the PayPal transaction
         payment = paypalrestsdk.Payment.find(payment_id)
 
         if payment.execute({"payer_id": payer_id}):  
@@ -101,7 +100,6 @@ def payment_success():
             transaction_time = transaction["create_time"]
             transaction_status = transaction["state"]
 
-            # ✅ Ensure transaction is completed
             if transaction_status.lower() != "completed":
                 st.error(f"⚠️ Payment failed! PayPal returned status: {transaction_status}")
                 return
@@ -145,7 +143,7 @@ def payment_cancel():
     st.title("❌ Payment Cancelled")
     st.warning("Your payment was not completed. You can try again anytime.")
 
-# ✅ Get AI-based Answer
+# ✅ AI Solution & TTS
 def get_gita_solution(problem, language="en"):
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
@@ -167,7 +165,6 @@ def get_gita_solution(problem, language="en"):
     except Exception as e:
         return f"❌ API Error: {str(e)}"
 
-# ✅ Generate gTTS Audio Response (Restored 27 Languages)
 def generate_audio_response(text, language="English"):
     language_map = {
         "English": "en", "Hindi": "hi", "Sanskrit": "sa", "Tamil": "ta", "Telugu": "te",
@@ -188,17 +185,8 @@ def generate_audio_response(text, language="English"):
 
 # ✅ Main Page
 def main_page():
-    if "email" not in st.session_state:
-        st.warning("Please log in again.")
-        st.session_state["current_page"] = "login"
-        return
-
-    email = st.session_state["email"]
     st.title("Bhagavad Gita Life Solutions 📖✨")
-
     problem = st.text_area("Describe your problem:")
-
-    # ✅ Language Selection Restored
     language = st.selectbox("Select a Language:", list(generate_audio_response.__annotations__.keys()))
 
     if st.button("Get Solution"):
