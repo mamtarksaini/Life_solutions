@@ -71,7 +71,6 @@ def payment_success():
     st.title("✅ Payment Successful!")
     st.success("Your payment was successful! You are now upgraded to **Premium** 🎉.")
 
-    # ✅ Get Payment ID & Payer ID from URL Parameters
     query_params = st.query_params
     payment_id = query_params.get("paymentId", None)
     payer_id = query_params.get("PayerID", None)
@@ -88,7 +87,6 @@ def payment_success():
             transaction_currency = payment["transactions"][0]["amount"]["currency"]
             transaction_time = payment["create_time"]
 
-            # ✅ Show transaction details to the user
             st.subheader("📜 Transaction Details:")
             st.write(f"**Transaction ID:** `{transaction_id}`")
             st.write(f"**Amount Paid:** `{transaction_amount} {transaction_currency}`")
@@ -96,11 +94,9 @@ def payment_success():
 
             email = st.session_state.get("email", "unknown_user")
 
-            # ✅ Update Firestore User Plan
             user_ref = db.collection("users").document(email)
             user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
 
-            # ✅ Store Transaction Details in Firestore
             transaction_ref = db.collection("transactions").document(transaction_id)
             transaction_ref.set({
                 "email": email,
@@ -114,7 +110,6 @@ def payment_success():
             st.success("✅ Transaction recorded successfully in Firestore!")
             st.balloons()
 
-            # ✅ Add a button to return to the main app
             if st.button("Return to App"):
                 st.session_state["current_page"] = "main_page"
                 st.rerun()
@@ -127,18 +122,15 @@ def payment_success():
 def payment_cancel():
     st.title("❌ Payment Cancelled")
     st.warning("Your payment was not completed. You can try again anytime.")
-    if st.button("Try Again"):
-        st.session_state["current_page"] = "main_page"
-        st.rerun()
 
 # ✅ Get AI-based Answer
 def get_gita_solution(problem, language="en"):
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={st.secrets['GEMINI_API_KEY']}"
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     
     payload = {
         "contents": [
-            {"parts": [{"text": f"Based on the Bhagavad Gita Provide a solution for {problem} and respond in {language} without mentioning the shloka. The response should be in paragraph format"}]}
+            {"parts": [{"text": f"Based on the Bhagavad Gita Provide a solution for {problem} in {language} without mentioning the shloka."}]}
         ]
     }
 
@@ -178,7 +170,18 @@ def main_page():
 
     email = st.session_state["email"]
     st.title("Bhagavad Gita Life Solutions 📖✨")
-    st.subheader("Ask for guidance from Bhagavad Gita.")
+
+    problem = st.text_area("Describe your problem:")
+    
+    if st.button("Get Solution"):
+        solution = get_gita_solution(problem)
+        st.subheader("📜 Bhagavad Gita's Wisdom:")
+        st.write(solution)
+
+        # ✅ Generate & Play Audio Response
+        audio_file = generate_audio_response(solution)
+        if audio_file:
+            st.audio(audio_file)
 
     if st.button("Upgrade to Premium - $7/month"):
         payment_url = create_paypal_payment()
