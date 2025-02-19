@@ -65,8 +65,42 @@ def create_paypal_payment():
     if payment.create():
         for link in payment.links:
             if link.rel == "approval_url":
-                return link.href  # ✅ Corrected redirect URL
+                return link.href  # ✅ PayPal redirects with `paymentId` & `PayerID`
     return None
+
+# ✅ Function to capture PayPal Payment upon return
+def payment_success():
+    st.title("✅ Payment Successful!")
+
+    # 🔹 Get Payment ID & Payer ID from URL Parameters
+    query_params = st.experimental_get_query_params()
+
+    if "paymentId" in query_params and "PayerID" in query_params:
+        payment_id = query_params["paymentId"][0]
+        payer_id = query_params["PayerID"][0]
+
+        payment = paypalrestsdk.Payment.find(payment_id)
+
+        if payment.execute({"payer_id": payer_id}):  # ✅ Capture payment
+            st.success("Thank you for upgrading to Premium! Your subscription is now active.")
+
+            email = st.session_state.get("email", "unknown_user")
+
+            # ✅ Update Firestore User Plan
+            user_ref = db.collection("users").document(email)
+            user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
+
+            st.balloons()
+        else:
+            st.error("⚠️ Payment execution failed. Please contact support.")
+
+    else:
+        st.error("⚠️ No payment details found. Payment may have failed or been canceled.")
+
+# ✅ Function to handle payment cancellation
+def payment_cancel():
+    st.title("❌ Payment Cancelled")
+    st.warning("Your payment was not completed. You can try again anytime.")
 
 # ✅ Function to call Gemini API
 def get_gita_solution(problem, language="en"):
@@ -85,8 +119,7 @@ def get_gita_solution(problem, language="en"):
         response_json = response.json()
 
         if response.status_code == 200 and "candidates" in response_json:
-            solution_text = response_json["candidates"][0]["content"]["parts"][0]["text"]
-            return solution_text
+            return response_json["candidates"][0]["content"]["parts"][0]["text"]
         else:
             return "⚠️ API returned an empty response."
 
@@ -110,23 +143,6 @@ def generate_audio_response(text, language="English"):
         return audio_file
     except Exception as e:
         return f"Error in TTS generation: {e}"
-
-# ✅ Handle PayPal Payment Success
-def payment_success():
-    st.title("✅ Payment Successful!")
-    st.success("Thank you for upgrading to Premium! Your subscription is now active.")
-    email = st.session_state.get("email", "unknown_user")
-
-    # ✅ Update Firestore User Plan
-    user_ref = db.collection("users").document(email)
-    user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
-
-    st.balloons()
-
-# ✅ Handle Payment Cancellation
-def payment_cancel():
-    st.title("❌ Payment Cancelled")
-    st.warning("Your payment was not completed. You can try again anytime.")
 
 # ✅ Main Page
 def main_page():
@@ -165,20 +181,16 @@ def main_page():
     ]) 
 
     if st.button("Get Solution"):
-        if problem.strip():
-            if is_eligible:
-                combined_text = get_gita_solution(problem, language)
-                audio_file = generate_audio_response(combined_text, language)
-                if audio_file:
-                    st.audio(audio_file)
+        combined_text = get_gita_solution(problem, language)
+        audio_file = generate_audio_response(combined_text, language)
+        if audio_file:
+            st.audio(audio_file)
 
-                user_ref = db.collection("users").document(email)
-                user_ref.update({"queries": firestore.Increment(1), "last_query_date": datetime.now().strftime("%Y-%m-%d")})
-            else:
-                st.error("You've reached your monthly limit! Upgrade to Premium for unlimited queries.")
-        else:
-            st.warning("Please enter a valid problem description.")
-    
-    if st.button("Log out"):
-        st.session_state["current_page"] = "signup"
-        st.rerun()
+# ✅ Handle PayPal Redirects
+query_params = st.experimental_get_query_params()
+if "page" in query_params and query_params["page"][0] == "success":
+    payment_success()
+elif "page" in query_params and query_params["page"][0] == "cancel":
+    payment_cancel()
+else:
+    main_page()
