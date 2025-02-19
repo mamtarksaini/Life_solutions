@@ -19,11 +19,11 @@ paypalrestsdk.configure({
 })
 
 # Constants
-FREE_MONTHLY_QUERIES = 10  # ✅ Free users get 10 queries per month
+FREE_MONTHLY_QUERIES = 10
 SUBSCRIBER_MONTHLY_QUERIES = 100
-SUBSCRIPTION_COST = 7  # ✅ Subscription costs $7 per month
+SUBSCRIPTION_COST = 7
 
-# ✅ Function to check user eligibility
+# ✅ Check user eligibility
 def check_user_eligibility(email):
     user_ref = db.collection("users").document(email)
     user_doc = user_ref.get()
@@ -38,7 +38,6 @@ def check_user_eligibility(email):
     plan = user_data.get("plan", "free")
     limit = FREE_MONTHLY_QUERIES if plan == "free" else SUBSCRIBER_MONTHLY_QUERIES
 
-    # Reset queries if a month has passed
     if last_query_date:
         last_date = datetime.strptime(last_query_date, "%Y-%m-%d")
         if datetime.now() - last_date > timedelta(days=30):
@@ -47,7 +46,7 @@ def check_user_eligibility(email):
 
     return queries < limit, limit - queries, plan
 
-# ✅ Function to create PayPal Payment
+# ✅ Create PayPal Payment
 def create_paypal_payment():
     payment = paypalrestsdk.Payment({
         "intent": "sale",
@@ -68,16 +67,16 @@ def create_paypal_payment():
                 return link.href  # ✅ PayPal redirects with `paymentId` & `PayerID`
     return None
 
-# ✅ Function to capture PayPal Payment upon return
+# ✅ Capture PayPal Payment
 def payment_success():
     st.title("✅ Payment Successful!")
 
-    # 🔹 Get Payment ID & Payer ID from URL Parameters
-    query_params = st.experimental_get_query_params()
+    # ✅ Get Payment ID & Payer ID from URL Parameters
+    query_params = st.query_params  # 🔹 Fixed deprecated function
 
     if "paymentId" in query_params and "PayerID" in query_params:
-        payment_id = query_params["paymentId"][0]
-        payer_id = query_params["PayerID"][0]
+        payment_id = query_params["paymentId"]
+        payer_id = query_params["PayerID"]
 
         payment = paypalrestsdk.Payment.find(payment_id)
 
@@ -97,12 +96,12 @@ def payment_success():
     else:
         st.error("⚠️ No payment details found. Payment may have failed or been canceled.")
 
-# ✅ Function to handle payment cancellation
+# ✅ Handle payment cancellation
 def payment_cancel():
     st.title("❌ Payment Cancelled")
     st.warning("Your payment was not completed. You can try again anytime.")
 
-# ✅ Function to call Gemini API
+# ✅ Get AI-Generated Answer
 def get_gita_solution(problem, language="en"):
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={st.secrets['GEMINI_API_KEY']}"
 
@@ -126,7 +125,7 @@ def get_gita_solution(problem, language="en"):
     except Exception as e:
         return f"❌ API Error: {str(e)}"
 
-# ✅ Function to generate gTTS audio response
+# ✅ Generate Audio Response (TTS)
 def generate_audio_response(text, language="English"):
     language_map = {
         "English": "en", "Hindi": "hi", "Sanskrit": "sa", "Tamil": "ta", "Telugu": "te", "Marathi": "mr",
@@ -187,10 +186,11 @@ def main_page():
             st.audio(audio_file)
 
 # ✅ Handle PayPal Redirects
-query_params = st.experimental_get_query_params()
-if "page" in query_params and query_params["page"][0] == "success":
+query_params = st.query_params  # 🔹 Fixed function
+
+if "page" in query_params and query_params["page"] == "success":
     payment_success()
-elif "page" in query_params and query_params["page"][0] == "cancel":
+elif "page" in query_params and query_params["page"] == "cancel":
     payment_cancel()
 else:
     main_page()
