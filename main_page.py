@@ -66,9 +66,10 @@ def create_paypal_payment():
                 return link.href  
     return None
 
-# ✅ Capture PayPal Payment Only If Payment is Verified
+# ✅ Capture & Confirm Payment
 def payment_success():
     st.title("✅ Payment Successful!")
+    st.success("Your payment was successful! You are now upgraded to **Premium** 🎉.")
 
     # ✅ Get Payment ID & Payer ID from URL Parameters
     query_params = st.query_params
@@ -81,13 +82,42 @@ def payment_success():
         if payment.execute({"payer_id": payer_id}):  
             st.success("✅ Thank you for upgrading to Premium! Your subscription is now active.")
 
+            # 🔹 Extract transaction details
+            transaction_id = payment["transactions"][0]["related_resources"][0]["sale"]["id"]
+            transaction_amount = payment["transactions"][0]["amount"]["total"]
+            transaction_currency = payment["transactions"][0]["amount"]["currency"]
+            transaction_time = payment["create_time"]
+
+            # ✅ Show transaction details to the user
+            st.subheader("📜 Transaction Details:")
+            st.write(f"**Transaction ID:** `{transaction_id}`")
+            st.write(f"**Amount Paid:** `{transaction_amount} {transaction_currency}`")
+            st.write(f"**Date & Time:** `{transaction_time}`")
+
             email = st.session_state.get("email", "unknown_user")
 
-            # ✅ Update Firestore User Plan only after success
+            # ✅ Update Firestore User Plan
             user_ref = db.collection("users").document(email)
             user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
 
+            # ✅ Store Transaction Details in Firestore
+            transaction_ref = db.collection("transactions").document(transaction_id)
+            transaction_ref.set({
+                "email": email,
+                "transaction_id": transaction_id,
+                "amount": transaction_amount,
+                "currency": transaction_currency,
+                "status": "Completed",
+                "timestamp": transaction_time
+            })
+
+            st.success("✅ Transaction recorded successfully in Firestore!")
             st.balloons()
+
+            # ✅ Add a button to return to the main app
+            if st.button("Return to App"):
+                st.session_state["current_page"] = "main_page"
+                st.rerun()
         else:
             st.error("⚠️ Payment execution failed. Please contact support.")
     else:
@@ -97,11 +127,13 @@ def payment_success():
 def payment_cancel():
     st.title("❌ Payment Cancelled")
     st.warning("Your payment was not completed. You can try again anytime.")
+    if st.button("Try Again"):
+        st.session_state["current_page"] = "main_page"
+        st.rerun()
 
-# ✅ Get AI-Generated Answer
+# ✅ Get AI-based Answer
 def get_gita_solution(problem, language="en"):
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={st.secrets['GEMINI_API_KEY']}"
-
     headers = {"Content-Type": "application/json"}
     
     payload = {
@@ -118,20 +150,17 @@ def get_gita_solution(problem, language="en"):
             return response_json["candidates"][0]["content"]["parts"][0]["text"]
         else:
             return "⚠️ API returned an empty response."
-
     except Exception as e:
         return f"❌ API Error: {str(e)}"
 
-# ✅ Generate Audio Response (TTS)
+# ✅ Generate gTTS Audio Response
 def generate_audio_response(text, language="English"):
     language_map = {
-        "English": "en", "Hindi": "hi", "Sanskrit": "sa", "Tamil": "ta", "Telugu": "te", "Marathi": "mr",
-        "Gujarati": "gu", "Bengali": "bn", "Punjabi": "pa", "Kannada": "kn", "Malayalam": "ml", "Odia": "or",
-        "Assamese": "as", "Urdu": "ur", "Nepali": "ne"
+        "English": "en", "Hindi": "hi", "Sanskrit": "sa", "Tamil": "ta", "Telugu": "te",
+        "Marathi": "mr", "Gujarati": "gu", "Bengali": "bn", "Punjabi": "pa", "Kannada": "kn",
+        "Malayalam": "ml", "Odia": "or", "Assamese": "as", "Urdu": "ur", "Nepali": "ne"
     }
-
     selected_lang = language_map.get(language, "en")
-
     try:
         tts = gTTS(text=text, lang=selected_lang)
         audio_file = "response.mp3"
@@ -149,38 +178,14 @@ def main_page():
 
     email = st.session_state["email"]
     st.title("Bhagavad Gita Life Solutions 📖✨")
-    st.write(f"Welcome, **{email}**! 🙏")
+    st.subheader("Ask for guidance from Bhagavad Gita.")
 
-    # Check user eligibility
-    is_eligible, queries_left, plan = check_user_eligibility(email)
-
-    # Display user plan and queries left
-    st.subheader("📜 Your Subscription Details")
-    st.write(f"**Plan:** {plan.capitalize()} 🌟")
-    st.write(f"**Queries Left This Month:** {queries_left}")
-
-    # ✅ PayPal Payment Button
-    st.subheader("Upgrade for More Queries 💳")
-    if st.button(f"Upgrade to Premium - ${SUBSCRIPTION_COST}/month"):
+    if st.button("Upgrade to Premium - $7/month"):
         payment_url = create_paypal_payment()
         if payment_url:
-            st.success("✅ Payment created successfully! Click below to proceed:")
             st.markdown(f"[Click here to pay]({payment_url})")
         else:
-            st.error("❌ Failed to create PayPal payment. Please try again.")
-
-    problem = st.text_area("Describe your specific problem:", placeholder="Type your problem here...")
-    language = st.selectbox("Preferred Language for Audio Response:", [
-        "English", "Hindi", "Sanskrit", "Tamil", "Telugu", "Marathi", "Gujarati", 
-        "Bengali", "Punjabi", "Kannada", "Malayalam", "Odia", "Assamese", "Urdu", 
-        "Nepali"
-    ]) 
-
-    if st.button("Get Solution"):
-        combined_text = get_gita_solution(problem, language)
-        audio_file = generate_audio_response(combined_text, language)
-        if audio_file:
-            st.audio(audio_file)
+            st.error("❌ Payment failed.")
 
 # ✅ Handle PayPal Redirects
 query_params = st.query_params
