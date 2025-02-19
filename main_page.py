@@ -47,96 +47,76 @@ def check_user_eligibility(email):
 
 # ✅ Create PayPal Payment
 def create_paypal_payment():
-    try:
-        payment = paypalrestsdk.Payment({
-            "intent": "sale",
-            "payer": {"payment_method": "paypal"},
-            "redirect_urls": {
-                "return_url": "https://shrikrishna.streamlit.app/?page=success",
-                "cancel_url": "https://shrikrishna.streamlit.app/?page=cancel"
-            },
-            "transactions": [{
-                "amount": {"total": str(SUBSCRIPTION_COST), "currency": "USD"},
-                "description": "Upgrade to Premium Plan"
-            }]
-        })
+    payment = paypalrestsdk.Payment({
+        "intent": "sale",
+        "payer": {"payment_method": "paypal"},
+        "redirect_urls": {
+            "return_url": "https://shrikrishna.streamlit.app/?page=success",
+            "cancel_url": "https://shrikrishna.streamlit.app/?page=cancel"
+        },
+        "transactions": [{
+            "amount": {"total": str(SUBSCRIPTION_COST), "currency": "USD"},
+            "description": "Upgrade to Premium Plan"
+        }]
+    })
 
-        if payment.create():
-            for link in payment.links:
-                if link.rel == "approval_url":
-                    return link.href  
-        else:
-            st.error("❌ Failed to create PayPal payment.")
-            st.json(payment.error)  # ✅ Show PayPal error message
-            return None
-    except Exception as e:
-        st.error(f"❌ PayPal API error: {str(e)}")
-        return None
+    if payment.create():
+        for link in payment.links:
+            if link.rel == "approval_url":
+                return link.href  
+    return None
 
 # ✅ Capture & Confirm Payment
 def payment_success():
     st.title("✅ Payment Successful!")
-    st.success("Your payment is being verified...")
+    st.success("Your payment was successful! You are now upgraded to **Premium** 🎉.")
 
     query_params = st.query_params
     payment_id = query_params.get("paymentId", None)
     payer_id = query_params.get("PayerID", None)
 
-    if not payment_id or not payer_id:
-        st.error("⚠️ No valid payment details found. Payment may have failed or been canceled.")
-        return
-
-    try:
+    if payment_id and payer_id:
         payment = paypalrestsdk.Payment.find(payment_id)
 
         if payment.execute({"payer_id": payer_id}):  
             st.success("✅ Thank you for upgrading to Premium! Your subscription is now active.")
 
-            transaction = payment["transactions"][0]["related_resources"][0]["sale"]
-            transaction_id = transaction["id"]
-            transaction_amount = transaction["amount"]["total"]
-            transaction_currency = transaction["amount"]["currency"]
-            transaction_time = transaction["create_time"]
-            transaction_status = transaction["state"]
-
-            if transaction_status.lower() != "completed":
-                st.error(f"⚠️ Payment failed! PayPal returned status: {transaction_status}")
-                return
+            # 🔹 Extract transaction details
+            transaction_id = payment["transactions"][0]["related_resources"][0]["sale"]["id"]
+            transaction_amount = payment["transactions"][0]["amount"]["total"]
+            transaction_currency = payment["transactions"][0]["amount"]["currency"]
+            transaction_time = payment["create_time"]
 
             st.subheader("📜 Transaction Details:")
             st.write(f"**Transaction ID:** `{transaction_id}`")
             st.write(f"**Amount Paid:** `{transaction_amount} {transaction_currency}`")
             st.write(f"**Date & Time:** `{transaction_time}`")
 
-            email = st.session_state.get("email", None)
+            email = st.session_state.get("email", "unknown_user")
 
-            if email:
-                user_ref = db.collection("users").document(email)
-                user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
+            user_ref = db.collection("users").document(email)
+            user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
 
-                transaction_ref = db.collection("transactions").document(transaction_id)
-                transaction_ref.set({
-                    "email": email,
-                    "transaction_id": transaction_id,
-                    "amount": transaction_amount,
-                    "currency": transaction_currency,
-                    "status": "Completed",
-                    "timestamp": transaction_time
-                })
+            transaction_ref = db.collection("transactions").document(transaction_id)
+            transaction_ref.set({
+                "email": email,
+                "transaction_id": transaction_id,
+                "amount": transaction_amount,
+                "currency": transaction_currency,
+                "status": "Completed",
+                "timestamp": transaction_time
+            })
 
-                st.success("✅ Transaction recorded successfully in Firestore!")
-                st.balloons()
+            st.success("✅ Transaction recorded successfully in Firestore!")
+            st.balloons()
 
-                if st.button("Return to App"):
-                    st.session_state["current_page"] = "main_page"
-                    st.rerun()
-            else:
-                st.error("⚠️ User session not found. Cannot update Firestore.")
-
+            if st.button("Return to App"):
+                st.session_state["current_page"] = "main_page"
+                st.rerun()
         else:
             st.error("⚠️ Payment execution failed. Please contact support.")
-    except Exception as e:
-        st.error(f"❌ Error processing payment: {str(e)}")
+    else:
+        st.error("⚠️ No valid payment details found. Payment may have failed or been canceled.")
 
 # ✅ Handle payment cancellation
 def payment_cancel():
@@ -150,7 +130,7 @@ def get_gita_solution(problem, language="en"):
     
     payload = {
         "contents": [
-            {"parts": [{"text": f"Based on the Bhagavad Gita, provide a solution for {problem} in {language} without mentioning the shloka."}]}
+            {"parts": [{"text": f"Based on the Bhagavad Gita Provide a solution for {problem} in {language} without mentioning the shloka.Please provide the solution in paragraph form,"}]}
         ]
     }
 
@@ -188,13 +168,23 @@ def generate_audio_response(text, language="English"):
 def main_page():
     if "email" not in st.session_state:
         st.warning("Please log in again.")
+        st.session_state["current_page"] = "login"
         return
 
     email = st.session_state["email"]
     st.title("Bhagavad Gita Life Solutions 📖✨")
 
-    problem = st.text_area("Describe your problem:")
-    language = st.selectbox("Select a Language:", list(generate_audio_response.__annotations__.keys()))
+    problem = st.text_area("Describe your problem:", key="problem_input")
+
+
+    # ✅ Language Selection Restored
+    language = st.selectbox("Select a Language:", [
+        "English", "Hindi", "Sanskrit", "Tamil", "Telugu", "Marathi", "Gujarati", 
+        "Bengali", "Punjabi", "Kannada", "Malayalam", "Odia", "Assamese", "Urdu", 
+        "Nepali", "Sindhi", "Kashmiri", "Konkani", "Manipuri", "Maithili",
+        "Bodo", "Santali", "Dogri", "Rajasthani", "Chhattisgarhi","Bhili", "Tulu"
+
+    ]) 
 
     if st.button("Get Solution"):
         solution = get_gita_solution(problem, language)
@@ -203,6 +193,13 @@ def main_page():
         audio_file = generate_audio_response(solution, language)
         if audio_file:
             st.audio(audio_file)
+
+    if st.button("Upgrade to Premium - $7/month"):
+        payment_url = create_paypal_payment()
+        if payment_url:
+            st.markdown(f"[Click here to pay]({payment_url})")
+        else:
+            st.error("❌ Payment failed.")
 
 query_params = st.query_params
 if "page" in query_params and query_params["page"] == "success":
