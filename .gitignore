@@ -1,0 +1,21 @@
+# 🔒 Ignore Firebase private key JSON (if it's in your project)
+life-solutions-69890-firebase-adminsdk-fbsvc-9fb11f0d47.json
+
+# 🔒 Ignore Streamlit secrets file (if using local development)
+.streamlit/secrets.toml
+
+# 🔹 Ignore Python virtual environment
+venv/
+env/
+
+# 🔹 Ignore compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+
+# 🔹 Ignore system files (Mac & Windows)
+.DS_Store
+Thumbs.db
+
+# 🔹 Ignore logs & cache
+*.log
