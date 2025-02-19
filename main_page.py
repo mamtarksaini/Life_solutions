@@ -4,14 +4,13 @@ from firebase_admin import firestore
 from firebase_config import db
 from datetime import datetime, timedelta
 import requests
-import os
 import paypalrestsdk
-from gtts import gTTS  # ✅ Using gTTS for free TTS
+from gtts import gTTS
 
 # Load API Key securely from Streamlit secrets
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
-# PayPal Configuration from Streamlit secrets
+# PayPal Configuration
 paypalrestsdk.configure({
     "mode": "sandbox",  # Change to 'live' for production
     "client_id": st.secrets["paypal"]["PAYPAL_CLIENT_ID"],
@@ -64,37 +63,35 @@ def create_paypal_payment():
     if payment.create():
         for link in payment.links:
             if link.rel == "approval_url":
-                return link.href  # ✅ PayPal redirects with `paymentId` & `PayerID`
+                return link.href  
     return None
 
-# ✅ Capture PayPal Payment
+# ✅ Capture PayPal Payment Only If Payment is Verified
 def payment_success():
     st.title("✅ Payment Successful!")
 
     # ✅ Get Payment ID & Payer ID from URL Parameters
-    query_params = st.query_params  # 🔹 Fixed deprecated function
+    query_params = st.query_params
+    payment_id = query_params.get("paymentId", None)
+    payer_id = query_params.get("PayerID", None)
 
-    if "paymentId" in query_params and "PayerID" in query_params:
-        payment_id = query_params["paymentId"]
-        payer_id = query_params["PayerID"]
-
+    if payment_id and payer_id:
         payment = paypalrestsdk.Payment.find(payment_id)
 
-        if payment.execute({"payer_id": payer_id}):  # ✅ Capture payment
-            st.success("Thank you for upgrading to Premium! Your subscription is now active.")
+        if payment.execute({"payer_id": payer_id}):  
+            st.success("✅ Thank you for upgrading to Premium! Your subscription is now active.")
 
             email = st.session_state.get("email", "unknown_user")
 
-            # ✅ Update Firestore User Plan
+            # ✅ Update Firestore User Plan only after success
             user_ref = db.collection("users").document(email)
             user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
 
             st.balloons()
         else:
             st.error("⚠️ Payment execution failed. Please contact support.")
-
     else:
-        st.error("⚠️ No payment details found. Payment may have failed or been canceled.")
+        st.error("⚠️ No valid payment details found. Payment may have failed or been canceled.")
 
 # ✅ Handle payment cancellation
 def payment_cancel():
@@ -186,8 +183,7 @@ def main_page():
             st.audio(audio_file)
 
 # ✅ Handle PayPal Redirects
-query_params = st.query_params  # 🔹 Fixed function
-
+query_params = st.query_params
 if "page" in query_params and query_params["page"] == "success":
     payment_success()
 elif "page" in query_params and query_params["page"] == "cancel":
