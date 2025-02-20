@@ -68,15 +68,15 @@ def create_paypal_payment():
 
 # ✅ Capture & Confirm Payment
 # ✅ Capture & Confirm Payment
+# ✅ Capture & Confirm Payment
 def payment_success():
     st.title("✅ Payment Successful!")
     st.success("Your payment was successful! You are now upgraded to **Premium** 🎉.")
 
-    # ✅ Store Payment Success in `st.session_state`
+    # ✅ Prevent Auto-Reload by Storing State
     if "payment_verified" not in st.session_state:
         st.session_state["payment_verified"] = False
 
-    # ✅ Prevent Auto-Reload by Storing State
     if not st.session_state["payment_verified"]:
         query_params = st.query_params
         payment_id = query_params.get("paymentId", None)
@@ -106,13 +106,18 @@ def payment_success():
                     st.error(f"⚠️ Payment failed! PayPal returned status: {transaction_status}")
                     return
 
-                # ✅ Show transaction details
+                # ✅ Show transaction details before database update
                 st.subheader("📜 Transaction Details:")
                 st.write(f"**Transaction ID:** `{transaction_id}`")
                 st.write(f"**Amount Paid:** `{transaction_amount} {transaction_currency}`")
                 st.write(f"**Date & Time:** `{transaction_time}`")
 
-                email = st.session_state.get("email", "unknown_user")
+                email = st.session_state.get("email", None)
+
+                # ✅ Ensure email is available before updating Firestore
+                if not email:
+                    st.error("⚠️ Error: No email found in session. Please log in again.")
+                    return
 
                 # ✅ Update Firestore User Plan
                 user_ref = db.collection("users").document(email)
