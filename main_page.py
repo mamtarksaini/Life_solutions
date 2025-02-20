@@ -69,86 +69,78 @@ def create_paypal_payment():
 # ✅ Capture & Confirm Payment
 # ✅ Capture & Confirm Payment
 # ✅ Capture & Confirm Payment
+# ✅ Capture & Confirm Payment
 def payment_success():
     st.title("✅ Payment Successful!")
     st.success("Your payment was successful! You are now upgraded to **Premium** 🎉.")
 
-    # ✅ Prevent Auto-Reload by Storing State
-    if "payment_verified" not in st.session_state:
-        st.session_state["payment_verified"] = False
+    # ✅ Prevent Auto-Reload by Removing Query Params
+    st.experimental_set_query_params()  # Clears query params to prevent refresh issue
 
-    if not st.session_state["payment_verified"]:
-        query_params = st.query_params
-        payment_id = query_params.get("paymentId", None)
-        payer_id = query_params.get("PayerID", None)
+    query_params = st.query_params
+    payment_id = query_params.get("paymentId", None)
+    payer_id = query_params.get("PayerID", None)
 
-        if not payment_id or not payer_id:
-            st.error("⚠️ No valid payment details found. Payment may have failed or been canceled.")
-            return
+    if not payment_id or not payer_id:
+        st.error("⚠️ No valid payment details found. Payment may have failed or been canceled.")
+        return
 
-        try:
-            # ✅ Find the PayPal transaction
-            payment = paypalrestsdk.Payment.find(payment_id)
+    try:
+        # ✅ Find the PayPal transaction
+        payment = paypalrestsdk.Payment.find(payment_id)
 
-            if payment.execute({"payer_id": payer_id}):  
-                st.success("✅ Thank you for upgrading to Premium! Your subscription is now active.")
+        if payment.execute({"payer_id": payer_id}):  
+            st.success("✅ Thank you for upgrading to Premium! Your subscription is now active.")
 
-                # 🔹 Extract transaction details
-                transaction = payment["transactions"][0]["related_resources"][0]["sale"]
-                transaction_id = transaction["id"]
-                transaction_amount = transaction["amount"]["total"]
-                transaction_currency = transaction["amount"]["currency"]
-                transaction_time = transaction["create_time"]
-                transaction_status = transaction["state"]
+            # 🔹 Extract transaction details
+            transaction = payment["transactions"][0]["related_resources"][0]["sale"]
+            transaction_id = transaction["id"]
+            transaction_amount = transaction["amount"]["total"]
+            transaction_currency = transaction["amount"]["currency"]
+            transaction_time = transaction["create_time"]
+            transaction_status = transaction["state"]
 
-                # ✅ Ensure transaction is completed
-                if transaction_status.lower() != "completed":
-                    st.error(f"⚠️ Payment failed! PayPal returned status: {transaction_status}")
-                    return
+            # ✅ Ensure transaction is completed
+            if transaction_status.lower() != "completed":
+                st.error(f"⚠️ Payment failed! PayPal returned status: {transaction_status}")
+                return
 
-                # ✅ Show transaction details before database update
-                st.subheader("📜 Transaction Details:")
-                st.write(f"**Transaction ID:** `{transaction_id}`")
-                st.write(f"**Amount Paid:** `{transaction_amount} {transaction_currency}`")
-                st.write(f"**Date & Time:** `{transaction_time}`")
+            # ✅ Show transaction details
+            st.subheader("📜 Transaction Details:")
+            st.write(f"**Transaction ID:** `{transaction_id}`")
+            st.write(f"**Amount Paid:** `{transaction_amount} {transaction_currency}`")
+            st.write(f"**Date & Time:** `{transaction_time}`")
 
-                email = st.session_state.get("email", None)
+            email = st.session_state.get("email", "unknown_user")
 
-                # ✅ Ensure email is available before updating Firestore
-                if not email:
-                    st.error("⚠️ Error: No email found in session. Please log in again.")
-                    return
+            # ✅ Update Firestore User Plan
+            user_ref = db.collection("users").document(email)
+            user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
 
-                # ✅ Update Firestore User Plan
-                user_ref = db.collection("users").document(email)
-                user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
+            # ✅ Store Transaction Details in Firestore
+            transaction_ref = db.collection("transactions").document(transaction_id)
+            transaction_ref.set({
+                "email": email,
+                "transaction_id": transaction_id,
+                "amount": transaction_amount,
+                "currency": transaction_currency,
+                "status": "Completed",
+                "timestamp": transaction_time
+            })
 
-                # ✅ Store Transaction Details in Firestore
-                transaction_ref = db.collection("transactions").document(transaction_id)
-                transaction_ref.set({
-                    "email": email,
-                    "transaction_id": transaction_id,
-                    "amount": transaction_amount,
-                    "currency": transaction_currency,
-                    "status": "Completed",
-                    "timestamp": transaction_time
-                })
+            st.success("✅ Transaction recorded successfully in Firestore!")
+            st.balloons()
 
-                st.success("✅ Transaction recorded successfully in Firestore!")
-                st.balloons()
+            # ✅ Button to Manually Return to App
+            if st.button("Return to App"):
+                st.experimental_set_query_params()  # Clear query params
+                st.session_state["current_page"] = "main_page"
+                st.rerun()
 
-                # ✅ Mark Payment as Verified (Prevents Duplicate Execution)
-                st.session_state["payment_verified"] = True
-
-        except Exception as e:
-            st.error(f"❌ Error processing payment: {str(e)}")
-
-    # ✅ Button to Manually Return to App (Prevents Auto-Refresh)
-    if st.button("Return to App"):
-        del st.session_state["payment_verified"]  # Clear session state
-        st.session_state["current_page"] = "main_page"
-        st.rerun()
-
+        else:
+            st.error("⚠️ Payment execution failed. Please contact support.")
+    except Exception as e:
+        st.error(f"❌ Error processing payment: {str(e)}")
 
 # ✅ Handle payment cancellation
 def payment_cancel():
