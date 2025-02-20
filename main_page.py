@@ -23,7 +23,6 @@ SUBSCRIBER_MONTHLY_QUERIES = 100
 SUBSCRIPTION_COST = 7
 
 # ✅ Check user eligibility
-
 def check_user_eligibility(email):
     user_ref = db.collection("users").document(email)
     user_doc = user_ref.get()
@@ -68,7 +67,7 @@ def create_paypal_payment():
                     return link.href  
         else:
             st.error("❌ Failed to create PayPal payment.")
-            st.json(payment.error)  # ✅ Show PayPal error message
+            st.json(payment.error)
             return None
     except Exception as e:
         st.error(f"❌ PayPal API error: {str(e)}")
@@ -78,12 +77,7 @@ def create_paypal_payment():
 def payment_success():
     st.title("✅ Payment Successful!")
     st.success("Your payment is being verified...")
-    # ✅ Ensure email is stored in session before updating Firestore
-    email = st.session_state.get("email", None)
 
-    if not email or email == "unknown_user":
-        st.error("⚠️ Unable to process payment: User not logged in. Please log in and try again.")
-        return
     query_params = st.query_params
     payment_id = query_params.get("paymentId", None)
     payer_id = query_params.get("PayerID", None)
@@ -93,7 +87,6 @@ def payment_success():
         return
 
     try:
-        # ✅ Find the PayPal transaction
         payment = paypalrestsdk.Payment.find(payment_id)
 
         if payment.execute({"payer_id": payer_id}):  
@@ -107,7 +100,6 @@ def payment_success():
             transaction_time = transaction["create_time"]
             transaction_status = transaction["state"]
 
-            # ✅ Ensure transaction is completed
             if transaction_status.lower() != "completed":
                 st.error(f"⚠️ Payment failed! PayPal returned status: {transaction_status}")
                 return
@@ -146,7 +138,6 @@ def payment_success():
     except Exception as e:
         st.error(f"❌ Error processing payment: {str(e)}")
 
-
 # ✅ Handle payment cancellation
 def payment_cancel():
     st.title("❌ Payment Cancelled")
@@ -159,7 +150,7 @@ def get_gita_solution(problem, language="en"):
     
     payload = {
         "contents": [
-            {"parts": [{"text": f"Based on the Bhagavad Gita Provide a solution for {problem} in {language} without mentioning the shloka.Please provide the solution in paragraph form,"}]}
+            {"parts": [{"text": f"Based on the Bhagavad Gita Provide a solution for {problem} in {language} without mentioning the shloka."}]}
         ]
     }
 
@@ -174,23 +165,18 @@ def get_gita_solution(problem, language="en"):
     except Exception as e:
         return f"❌ API Error: {str(e)}"
 
-# ✅ Generate gTTS Audio Response
+# ✅ Generate gTTS Audio Response (Restored 27 Languages)
 def generate_audio_response(text, language="English"):
-    # ✅ Full list of 27 Indian languages + English
     language_map = {
         "English": "en", "Hindi": "hi", "Sanskrit": "sa", "Tamil": "ta", "Telugu": "te",
         "Marathi": "mr", "Gujarati": "gu", "Bengali": "bn", "Punjabi": "pa", "Kannada": "kn",
         "Malayalam": "ml", "Odia": "or", "Assamese": "as", "Urdu": "ur", "Nepali": "ne",
-        "Konkani": "gom", "Sindhi": "sd", "Manipuri (Meitei)": "mni", "Dogri": "doi",
-        "Santali": "sat", "Bodo": "brx", "Kashmiri": "ks", "Maithili": "mai",
-        "Bhili": "bhb", "Tulu": "tcy", "Ho": "hoc", "Gondi": "gon", "Mundari": "unr"
+        "Sindhi": "sd", "Kashmiri": "ks", "Konkani": "gom", "Manipuri": "mni", "Maithili": "mai",
+        "Bodo": "brx", "Santali": "sat", "Dogri": "doi", "Rajasthani": "raj", "Chhattisgarhi": "hne",
+        "Bhili": "bhb", "Tulu": "tcy"
     }
-
-    # ✅ Ensure selected language is available in gTTS
     selected_lang = language_map.get(language, "en")
-
     try:
-        # ✅ Generate speech
         tts = gTTS(text=text, lang=selected_lang)
         audio_file = "response.mp3"
         tts.save(audio_file)
@@ -198,8 +184,6 @@ def generate_audio_response(text, language="English"):
     except Exception as e:
         return f"Error in TTS generation: {e}"
 
-
-# ✅ Main Page
 # ✅ Main Page
 def main_page():
     if "email" not in st.session_state:
