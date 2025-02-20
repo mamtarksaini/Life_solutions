@@ -219,9 +219,13 @@ def main_page():
             st.error("❌ Payment failed.")
 
 query_params = st.query_params
-if "page" in query_params and query_params["page"] == "success":
-    payment_success()
-elif "page" in query_params and query_params["page"] == "cancel":
-    payment_cancel()
+
+if "page" in query_params:
+    if query_params["page"] == "success":
+        payment_success()  # ✅ Show success message first
+        st.stop()  # ✅ Prevents auto-reload
+    elif query_params["page"] == "cancel":
+        payment_cancel()
+        st.stop()  # ✅ Prevents auto-reload
 else:
-    main_page(),
+    main_page()  # ✅ Show main page only if there's no PayPal redirect
