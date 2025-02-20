@@ -67,26 +67,43 @@ def create_paypal_payment():
     return None
 
 # ✅ Capture & Confirm Payment
+# ✅ Capture & Confirm Payment
 def payment_success():
     st.title("✅ Payment Successful!")
     st.success("Your payment was successful! You are now upgraded to **Premium** 🎉.")
+
+    # ✅ Prevent Auto-Reload by Removing Query Params
+    st.experimental_set_query_params()  # Clears query params to prevent refresh issue
 
     query_params = st.query_params
     payment_id = query_params.get("paymentId", None)
     payer_id = query_params.get("PayerID", None)
 
-    if payment_id and payer_id:
+    if not payment_id or not payer_id:
+        st.error("⚠️ No valid payment details found. Payment may have failed or been canceled.")
+        return
+
+    try:
+        # ✅ Find the PayPal transaction
         payment = paypalrestsdk.Payment.find(payment_id)
 
         if payment.execute({"payer_id": payer_id}):  
             st.success("✅ Thank you for upgrading to Premium! Your subscription is now active.")
 
             # 🔹 Extract transaction details
-            transaction_id = payment["transactions"][0]["related_resources"][0]["sale"]["id"]
-            transaction_amount = payment["transactions"][0]["amount"]["total"]
-            transaction_currency = payment["transactions"][0]["amount"]["currency"]
-            transaction_time = payment["create_time"]
+            transaction = payment["transactions"][0]["related_resources"][0]["sale"]
+            transaction_id = transaction["id"]
+            transaction_amount = transaction["amount"]["total"]
+            transaction_currency = transaction["amount"]["currency"]
+            transaction_time = transaction["create_time"]
+            transaction_status = transaction["state"]
 
+            # ✅ Ensure transaction is completed
+            if transaction_status.lower() != "completed":
+                st.error(f"⚠️ Payment failed! PayPal returned status: {transaction_status}")
+                return
+
+            # ✅ Show transaction details
             st.subheader("📜 Transaction Details:")
             st.write(f"**Transaction ID:** `{transaction_id}`")
             st.write(f"**Amount Paid:** `{transaction_amount} {transaction_currency}`")
@@ -94,9 +111,11 @@ def payment_success():
 
             email = st.session_state.get("email", "unknown_user")
 
+            # ✅ Update Firestore User Plan
             user_ref = db.collection("users").document(email)
             user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
 
+            # ✅ Store Transaction Details in Firestore
             transaction_ref = db.collection("transactions").document(transaction_id)
             transaction_ref.set({
                 "email": email,
@@ -110,13 +129,17 @@ def payment_success():
             st.success("✅ Transaction recorded successfully in Firestore!")
             st.balloons()
 
+            # ✅ Button to Manually Return to App
             if st.button("Return to App"):
+                st.experimental_set_query_params()  # Clear query params
                 st.session_state["current_page"] = "main_page"
                 st.rerun()
+
         else:
             st.error("⚠️ Payment execution failed. Please contact support.")
-    else:
-        st.error("⚠️ No valid payment details found. Payment may have failed or been canceled.")
+    except Exception as e:
+        st.error(f"❌ Error processing payment: {str(e)}")
+
 
 # ✅ Handle payment cancellation
 def payment_cancel():
