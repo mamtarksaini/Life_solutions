@@ -106,9 +106,9 @@ def payment_success():
 
             # ✅ Show transaction details
             st.subheader("📜 Transaction Details:")
-            st.write(f"**Transaction ID:** `{transaction_id}`")
-            st.write(f"**Amount Paid:** `{transaction_amount} {transaction_currency}`")
-            st.write(f"**Date & Time:** `{transaction_time}`")
+            st.write(f"**Transaction ID:** {transaction_id}")
+            st.write(f"**Amount Paid:** {transaction_amount} {transaction_currency}")
+            st.write(f"**Date & Time:** {transaction_time}")
 
             email = st.session_state.get("email", "unknown_user")
 
@@ -224,4 +224,4 @@ if "page" in query_params and query_params["page"] == "success":
 elif "page" in query_params and query_params["page"] == "cancel":
     payment_cancel()
 else:
-    main_page()
+    main_page(),
