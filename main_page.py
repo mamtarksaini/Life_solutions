@@ -78,7 +78,12 @@ def create_paypal_payment():
 def payment_success():
     st.title("✅ Payment Successful!")
     st.success("Your payment is being verified...")
+    # ✅ Ensure email is stored in session before updating Firestore
+    email = st.session_state.get("email", None)
 
+    if not email or email == "unknown_user":
+        st.error("⚠️ Unable to process payment: User not logged in. Please log in and try again.")
+        return
     query_params = st.query_params
     payment_id = query_params.get("paymentId", None)
     payer_id = query_params.get("PayerID", None)
