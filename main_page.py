@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 import requests
 import paypalrestsdk
 from gtts import gTTS
-import os
 
 # Load API Key securely from Streamlit secrets
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
@@ -25,7 +24,7 @@ SUBSCRIPTION_COST = 7
 
 # ✅ Ensure Session Persistence
 if "email" not in st.session_state:
-    st.session_state["email"] = None  # Ensures email remains even after PayPal redirect
+    st.session_state["email"] = None
 
 # ✅ Check user eligibility
 def check_user_eligibility(email):
@@ -91,7 +90,7 @@ def payment_success():
     query_params = st.query_params
     payment_id = query_params.get("paymentId", None)
     payer_id = query_params.get("PayerID", None)
-    email = query_params.get("email", None)  # Restore email from URL
+    email = query_params.get("email", None)
 
     if email:
         st.session_state["email"] = email  # Restore session email
@@ -143,7 +142,6 @@ def payment_success():
             st.balloons()
 
             if st.button("Return to App"):
-                st.query_params.update()  # Clears query params
                 st.session_state["current_page"] = "main_page"
                 st.rerun()
         else:
@@ -156,75 +154,15 @@ def payment_cancel():
     st.title("❌ Payment Cancelled")
     st.warning("Your payment was not completed. You can try again anytime.")
 
-
-# ✅ Get AI-based Answer
-def get_gita_solution(problem, language="en"):
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
-    headers = {"Content-Type": "application/json"}
-    
-    payload = {
-        "contents": [
-            {"parts": [{"text": f"Based on the Bhagavad Gita Provide a solution for {problem} in {language} without mentioning the shloka."}]}
-        ]
-    }
-
-    try:
-        response = requests.post(url, headers=headers, json=payload)
-        response_json = response.json()
-
-        if response.status_code == 200 and "candidates" in response_json:
-            return response_json["candidates"][0]["content"]["parts"][0]["text"]
-        else:
-            return "⚠️ API returned an empty response."
-    except Exception as e:
-        return f"❌ API Error: {str(e)}"
-
-# ✅ Generate gTTS Audio Response (Restored 27 Languages)
-def generate_audio_response(text, language="English"):
-    language_map = {
-        "English": "en", "Hindi": "hi", "Sanskrit": "sa", "Tamil": "ta", "Telugu": "te",
-        "Marathi": "mr", "Gujarati": "gu", "Bengali": "bn", "Punjabi": "pa", "Kannada": "kn",
-        "Malayalam": "ml", "Odia": "or", "Assamese": "as", "Urdu": "ur", "Nepali": "ne",
-        "Sindhi": "sd", "Kashmiri": "ks", "Konkani": "gom", "Manipuri": "mni", "Maithili": "mai",
-        "Bodo": "brx", "Santali": "sat", "Dogri": "doi", "Rajasthani": "raj", "Chhattisgarhi": "hne",
-        "Bhili": "bhb", "Tulu": "tcy"
-    }
-    selected_lang = language_map.get(language, "en")
-    try:
-        tts = gTTS(text=text, lang=selected_lang)
-        audio_file = "response.mp3"
-        tts.save(audio_file)
-        return audio_file
-    except Exception as e:
-        return f"Error in TTS generation: {e}"
-
 # ✅ Main Page
 def main_page():
     email = st.session_state.get("email", None)
-    if "email" not in st.session_state:
+    if not email:
         st.warning("Please log in again.")
         st.session_state["current_page"] = "signup"
         return
 
-    email = st.session_state["email"]
     st.title("Bhagavad Gita Life Solutions 📖✨")
-
-    problem = st.text_area("Describe your problem:", key=f"problem_input_{email}")
-
-    language = st.selectbox("Select a Language:", [
-        "English", "Hindi", "Sanskrit", "Tamil", "Telugu", "Marathi", "Gujarati", 
-        "Bengali", "Punjabi", "Kannada", "Malayalam", "Odia", "Assamese", "Urdu", 
-        "Nepali", "Sindhi", "Kashmiri", "Konkani", "Manipuri", "Maithili",
-        "Bodo", "Santali", "Dogri", "Rajasthani", "Chhattisgarhi","Bhili", "Tulu"
-    ]) 
-
-    if st.button("Get Solution"):
-        solution = get_gita_solution(problem, language)
-        st.subheader("📜 Bhagavad Gita's Wisdom:")
-        st.write(solution)
-        audio_file = generate_audio_response(solution, language)
-        if audio_file:
-            st.audio(audio_file)
 
     if st.button("Upgrade to Premium - $7/month"):
         payment_url = create_paypal_payment()
@@ -233,14 +171,15 @@ def main_page():
         else:
             st.error("❌ Payment failed.")
 
+# ✅ Route Based on URL Params
 query_params = st.query_params
 
 if "page" in query_params:
     if query_params["page"] == "success":
-        payment_success()  # ✅ Show success message first
-        st.stop()  # ✅ Prevents auto-reload
+        payment_success()
+        st.stop()
     elif query_params["page"] == "cancel":
         payment_cancel()
-        st.stop()  # ✅ Prevents auto-reload
+        st.stop()
 else:
-    main_page()  # ✅ Show main page only if there's no PayPal redirect
+    main_page()
