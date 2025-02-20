@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import requests
 import paypalrestsdk
 from gtts import gTTS
+import os
 
 # Load API Key securely from Streamlit secrets
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
@@ -21,6 +22,10 @@ paypalrestsdk.configure({
 FREE_MONTHLY_QUERIES = 10
 SUBSCRIBER_MONTHLY_QUERIES = 100
 SUBSCRIPTION_COST = 7
+
+# ✅ Ensure Session Persistence
+if "email" not in st.session_state:
+    st.session_state["email"] = None  # Ensures email remains even after PayPal redirect
 
 # ✅ Check user eligibility
 def check_user_eligibility(email):
@@ -47,13 +52,18 @@ def check_user_eligibility(email):
 
 # ✅ Create PayPal Payment
 def create_paypal_payment():
+    email = st.session_state.get("email", None)
+    if not email:
+        st.error("⚠️ Please log in before making a payment.")
+        return None
+
     try:
         payment = paypalrestsdk.Payment({
             "intent": "sale",
             "payer": {"payment_method": "paypal"},
             "redirect_urls": {
-                "return_url": "https://shrikrishna.streamlit.app/?page=success",
-                "cancel_url": "https://shrikrishna.streamlit.app/?page=cancel"
+                "return_url": f"https://shrikrishna.streamlit.app/?page=success&email={email}",
+                "cancel_url": f"https://shrikrishna.streamlit.app/?page=cancel&email={email}"
             },
             "transactions": [{
                 "amount": {"total": str(SUBSCRIPTION_COST), "currency": "USD"},
@@ -81,6 +91,10 @@ def payment_success():
     query_params = st.query_params
     payment_id = query_params.get("paymentId", None)
     payer_id = query_params.get("PayerID", None)
+    email = query_params.get("email", None)  # Restore email from URL
+
+    if email:
+        st.session_state["email"] = email  # Restore session email
 
     if not payment_id or not payer_id:
         st.error("⚠️ No valid payment details found. Payment may have failed or been canceled.")
@@ -106,11 +120,9 @@ def payment_success():
 
             # ✅ Show transaction details
             st.subheader("📜 Transaction Details:")
-            st.write(f"**Transaction ID:** {transaction_id}")
-            st.write(f"**Amount Paid:** {transaction_amount} {transaction_currency}")
-            st.write(f"**Date & Time:** {transaction_time}")
-
-            email = st.session_state.get("email", "unknown_user")
+            st.write(f"**Transaction ID:** `{transaction_id}`")
+            st.write(f"**Amount Paid:** `{transaction_amount} {transaction_currency}`")
+            st.write(f"**Date & Time:** `{transaction_time}`")
 
             # ✅ Update Firestore User Plan
             user_ref = db.collection("users").document(email)
@@ -127,10 +139,11 @@ def payment_success():
                 "timestamp": transaction_time
             })
 
-            st.success("✅ Transaction recorded successfully in Firestore!")
+            st.success("✅ Transaction recorded successfully in Firestore! 🎉")
             st.balloons()
 
             if st.button("Return to App"):
+                st.query_params.update()  # Clears query params
                 st.session_state["current_page"] = "main_page"
                 st.rerun()
         else:
@@ -142,6 +155,7 @@ def payment_success():
 def payment_cancel():
     st.title("❌ Payment Cancelled")
     st.warning("Your payment was not completed. You can try again anytime.")
+
 
 # ✅ Get AI-based Answer
 def get_gita_solution(problem, language="en"):
@@ -186,6 +200,7 @@ def generate_audio_response(text, language="English"):
 
 # ✅ Main Page
 def main_page():
+    email = st.session_state.get("email", None)
     if "email" not in st.session_state:
         st.warning("Please log in again.")
         st.session_state["current_page"] = "signup"
