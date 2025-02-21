@@ -25,32 +25,8 @@ SUBSCRIPTION_COST = 7
 # ✅ Ensure Session Persistence
 if "email" not in st.session_state:
     st.session_state["email"] = None
-
 if "payment_verified" not in st.session_state:
-    st.session_state["payment_verified"] = False  # Prevent duplicate execution
-
-# ✅ Check user eligibility
-def check_user_eligibility(email):
-    user_ref = db.collection("users").document(email)
-    user_doc = user_ref.get()
-
-    if not user_doc.exists:
-        user_ref.set({"queries": 0, "last_query_date": None, "plan": "free"})
-        return True, FREE_MONTHLY_QUERIES, "Free"
-
-    user_data = user_doc.to_dict()
-    queries = user_data.get("queries", 0)
-    last_query_date = user_data.get("last_query_date")
-    plan = user_data.get("plan", "free")
-    limit = FREE_MONTHLY_QUERIES if plan == "free" else SUBSCRIBER_MONTHLY_QUERIES
-
-    if last_query_date:
-        last_date = datetime.strptime(last_query_date, "%Y-%m-%d")
-        if datetime.now() - last_date > timedelta(days=30):
-            user_ref.update({"queries": 0, "last_query_date": datetime.now().strftime("%Y-%m-%d")})
-            return True, limit, plan
-
-    return queries < limit, limit - queries, plan
+    st.session_state["payment_verified"] = False
 
 # ✅ Create PayPal Payment
 def create_paypal_payment():
@@ -90,14 +66,13 @@ def payment_success():
     st.title("✅ Payment Successful!")
     st.success("Your payment is being verified...")
 
-    query_params = st.query_params
+    query_params = st.query_params  # 🔹 Extract query params safely
     payment_id = query_params.get("paymentId", None)
     payer_id = query_params.get("PayerID", None)
     email = query_params.get("email", None)
 
-    # ✅ Restore email from query params
     if email:
-        st.session_state["email"] = email  
+        st.session_state["email"] = email  # Restore session email
 
     # ✅ Prevent duplicate execution
     if st.session_state["payment_verified"]:
@@ -109,8 +84,10 @@ def payment_success():
         return
 
     try:
+        # ✅ Retrieve PayPal Payment
         payment = paypalrestsdk.Payment.find(payment_id)
 
+        # ✅ Execute Payment
         if payment.execute({"payer_id": payer_id}):  
             st.success("✅ Thank you for upgrading to Premium! Your subscription is now active.")
 
@@ -133,21 +110,28 @@ def payment_success():
             st.write(f"**Date & Time:** `{transaction_time}`")
 
             # ✅ Update Firestore User Plan
-            user_ref = db.collection("users").document(email)
-            user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
+            try:
+                user_ref = db.collection("users").document(email)
+                user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
+            except Exception as e:
+                st.error(f"❌ Firestore update failed: {str(e)}")
+                return
 
-            # ✅ Store Transaction Details in Firestore
-            transaction_ref = db.collection("transactions").document(transaction_id)
-            transaction_ref.set({
-                "email": email,
-                "transaction_id": transaction_id,
-                "amount": transaction_amount,
-                "currency": transaction_currency,
-                "status": "Completed",
-                "timestamp": transaction_time
-            })
+            # ✅ Store Transaction in Firestore
+            try:
+                transaction_ref = db.collection("transactions").document(transaction_id)
+                transaction_ref.set({
+                    "email": email,
+                    "transaction_id": transaction_id,
+                    "amount": transaction_amount,
+                    "currency": transaction_currency,
+                    "status": "Completed",
+                    "timestamp": transaction_time
+                })
+                st.success("✅ Transaction recorded successfully in Firestore! 🎉")
+            except Exception as e:
+                st.error(f"❌ Firestore transaction record failed: {str(e)}")
 
-            st.success("✅ Transaction recorded successfully in Firestore! 🎉")
             st.balloons()
 
             # ✅ Prevent duplicate execution
