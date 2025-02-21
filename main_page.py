@@ -26,6 +26,9 @@ SUBSCRIPTION_COST = 7
 if "email" not in st.session_state:
     st.session_state["email"] = None
 
+if "payment_verified" not in st.session_state:
+    st.session_state["payment_verified"] = False  # Prevents duplicate processing
+
 # ✅ Check user eligibility
 def check_user_eligibility(email):
     user_ref = db.collection("users").document(email)
@@ -61,8 +64,8 @@ def create_paypal_payment():
             "intent": "sale",
             "payer": {"payment_method": "paypal"},
             "redirect_urls": {
-                "return_url": f"https://shrikrishna.streamlit.app/?page=success&email={email}",
-                "cancel_url": f"https://shrikrishna.streamlit.app/?page=cancel&email={email}"
+                "return_url": f"https://shrikrishna.streamlit.app/?page=success",
+                "cancel_url": f"https://shrikrishna.streamlit.app/?page=cancel"
             },
             "transactions": [{
                 "amount": {"total": str(SUBSCRIPTION_COST), "currency": "USD"},
@@ -85,18 +88,18 @@ def create_paypal_payment():
 # ✅ Capture & Confirm Payment
 def payment_success():
     st.title("✅ Payment Successful!")
-    st.success("Your payment is being verified...")
+    st.success("Verifying payment...")
 
     query_params = st.query_params
-    payment_id = query_params.get("paymentId", None)
-    payer_id = query_params.get("PayerID", None)
-    email = query_params.get("email", None)
-
-    if email:
-        st.session_state["email"] = email  # Restore session email
+    payment_id = query_params.get("paymentId", [None])[0]
+    payer_id = query_params.get("PayerID", [None])[0]
 
     if not payment_id or not payer_id:
         st.error("⚠️ No valid payment details found. Payment may have failed or been canceled.")
+        return
+
+    if st.session_state["payment_verified"]:
+        st.info("✅ Payment already verified.")
         return
 
     try:
@@ -123,6 +126,8 @@ def payment_success():
             st.write(f"**Amount Paid:** `{transaction_amount} {transaction_currency}`")
             st.write(f"**Date & Time:** `{transaction_time}`")
 
+            email = st.session_state.get("email", "unknown_user")
+
             # ✅ Update Firestore User Plan
             user_ref = db.collection("users").document(email)
             user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
@@ -141,7 +146,11 @@ def payment_success():
             st.success("✅ Transaction recorded successfully in Firestore! 🎉")
             st.balloons()
 
+            # ✅ Prevent duplicate processing
+            st.session_state["payment_verified"] = True
+
             if st.button("Return to App"):
+                del st.session_state["payment_verified"]
                 st.session_state["current_page"] = "main_page"
                 st.rerun()
         else:
