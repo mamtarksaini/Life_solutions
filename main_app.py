@@ -1,7 +1,7 @@
 import streamlit as st
 from signup import combined_auth_page
 
-from main_page import main_page
+from main_page import main_p
 
 
 #st.write("🔹 Firebase Project ID:", st.secrets["firebase"]["project_id"])
@@ -15,4 +15,4 @@ if st.session_state["current_page"] == "signup":
     combined_auth_page()
 
 elif st.session_state["current_page"] == "main_page":
-    main_page()
+    main_p()

@@ -7,17 +7,17 @@ import requests
 import paypalrestsdk
 from gtts import gTTS
 
-# Load API Key securely from Streamlit secrets
+# ✅ Load API Key securely from Streamlit secrets
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
-# PayPal Configuration
+# ✅ PayPal Configuration
 paypalrestsdk.configure({
     "mode": "sandbox",  # Change to 'live' for production
     "client_id": st.secrets["paypal"]["PAYPAL_CLIENT_ID"],
     "client_secret": st.secrets["paypal"]["PAYPAL_CLIENT_SECRET"]
 })
 
-# Constants
+# ✅ Constants
 FREE_MONTHLY_QUERIES = 10
 SUBSCRIBER_MONTHLY_QUERIES = 100
 SUBSCRIPTION_COST = 7
@@ -25,8 +25,29 @@ SUBSCRIPTION_COST = 7
 # ✅ Ensure Session Persistence
 if "email" not in st.session_state:
     st.session_state["email"] = None
-if "payment_verified" not in st.session_state:
-    st.session_state["payment_verified"] = False
+
+# ✅ Check user eligibility
+def check_user_eligibility(email):
+    user_ref = db.collection("users").document(email)
+    user_doc = user_ref.get()
+
+    if not user_doc.exists:
+        user_ref.set({"queries": 0, "last_query_date": None, "plan": "free"})
+        return True, FREE_MONTHLY_QUERIES, "Free"
+
+    user_data = user_doc.to_dict()
+    queries = user_data.get("queries", 0)
+    last_query_date = user_data.get("last_query_date")
+    plan = user_data.get("plan", "free")
+    limit = FREE_MONTHLY_QUERIES if plan == "free" else SUBSCRIBER_MONTHLY_QUERIES
+
+    if last_query_date:
+        last_date = datetime.strptime(last_query_date, "%Y-%m-%d")
+        if datetime.now() - last_date > timedelta(days=30):
+            user_ref.update({"queries": 0, "last_query_date": datetime.now().strftime("%Y-%m-%d")})
+            return True, limit, plan
+
+    return queries < limit, limit - queries, plan
 
 # ✅ Create PayPal Payment
 def create_paypal_payment():
@@ -66,7 +87,7 @@ def payment_success():
     st.title("✅ Payment Successful!")
     st.success("Your payment is being verified...")
 
-    query_params = st.query_params  # 🔹 Extract query params safely
+    query_params = st.query_params
     payment_id = query_params.get("paymentId", None)
     payer_id = query_params.get("PayerID", None)
     email = query_params.get("email", None)
@@ -74,20 +95,13 @@ def payment_success():
     if email:
         st.session_state["email"] = email  # Restore session email
 
-    # ✅ Prevent duplicate execution
-    if st.session_state["payment_verified"]:
-        st.info("✔ Payment already verified. Returning to main page.")
-        return
-
     if not payment_id or not payer_id:
         st.error("⚠️ No valid payment details found. Payment may have failed or been canceled.")
         return
 
     try:
-        # ✅ Retrieve PayPal Payment
         payment = paypalrestsdk.Payment.find(payment_id)
 
-        # ✅ Execute Payment
         if payment.execute({"payer_id": payer_id}):  
             st.success("✅ Thank you for upgrading to Premium! Your subscription is now active.")
 
@@ -110,39 +124,28 @@ def payment_success():
             st.write(f"**Date & Time:** `{transaction_time}`")
 
             # ✅ Update Firestore User Plan
-            try:
-                user_ref = db.collection("users").document(email)
-                user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
-            except Exception as e:
-                st.error(f"❌ Firestore update failed: {str(e)}")
-                return
+            user_ref = db.collection("users").document(email)
+            user_ref.update({"plan": "premium", "queries": SUBSCRIBER_MONTHLY_QUERIES})
 
-            # ✅ Store Transaction in Firestore
-            try:
-                transaction_ref = db.collection("transactions").document(transaction_id)
-                transaction_ref.set({
-                    "email": email,
-                    "transaction_id": transaction_id,
-                    "amount": transaction_amount,
-                    "currency": transaction_currency,
-                    "status": "Completed",
-                    "timestamp": transaction_time
-                })
-                st.success("✅ Transaction recorded successfully in Firestore! 🎉")
-            except Exception as e:
-                st.error(f"❌ Firestore transaction record failed: {str(e)}")
+            # ✅ Store Transaction Details in Firestore
+            transaction_ref = db.collection("transactions").document(transaction_id)
+            transaction_ref.set({
+                "email": email,
+                "transaction_id": transaction_id,
+                "amount": transaction_amount,
+                "currency": transaction_currency,
+                "status": "Completed",
+                "timestamp": transaction_time
+            })
 
+            st.success("✅ Transaction recorded successfully in Firestore! 🎉")
             st.balloons()
-
-            # ✅ Prevent duplicate execution
-            st.session_state["payment_verified"] = True  
 
             if st.button("Return to App"):
                 st.session_state["current_page"] = "main_page"
                 st.rerun()
         else:
             st.error("⚠️ Payment execution failed. Please contact support.")
-            st.json(payment.error)  # ✅ Show error if execution fails
     except Exception as e:
         st.error(f"❌ Error processing payment: {str(e)}")
 
@@ -152,7 +155,7 @@ def payment_cancel():
     st.warning("Your payment was not completed. You can try again anytime.")
 
 # ✅ Main Page
-def main_page():
+def main_p():
     email = st.session_state.get("email", None)
     if not email:
         st.warning("Please log in again.")
@@ -179,4 +182,4 @@ if "page" in query_params:
         payment_cancel()
         st.stop()
 else:
-    main_page()
+    main_p()
