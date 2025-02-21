@@ -27,7 +27,7 @@ if "email" not in st.session_state:
     st.session_state["email"] = None
 
 if "payment_verified" not in st.session_state:
-    st.session_state["payment_verified"] = False  # Prevent duplicate payment execution
+    st.session_state["payment_verified"] = False  # Prevent duplicate execution
 
 # ✅ Check user eligibility
 def check_user_eligibility(email):
