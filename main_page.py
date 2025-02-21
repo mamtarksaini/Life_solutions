@@ -26,6 +26,9 @@ SUBSCRIPTION_COST = 7
 if "email" not in st.session_state:
     st.session_state["email"] = None
 
+if "payment_verified" not in st.session_state:
+    st.session_state["payment_verified"] = False  # Prevent duplicate payment execution
+
 # ✅ Check user eligibility
 def check_user_eligibility(email):
     user_ref = db.collection("users").document(email)
@@ -92,8 +95,14 @@ def payment_success():
     payer_id = query_params.get("PayerID", None)
     email = query_params.get("email", None)
 
+    # ✅ Restore email from query params
     if email:
-        st.session_state["email"] = email  # Restore session email
+        st.session_state["email"] = email  
+
+    # ✅ Prevent duplicate execution
+    if st.session_state["payment_verified"]:
+        st.info("✔ Payment already verified. Returning to main page.")
+        return
 
     if not payment_id or not payer_id:
         st.error("⚠️ No valid payment details found. Payment may have failed or been canceled.")
@@ -141,11 +150,15 @@ def payment_success():
             st.success("✅ Transaction recorded successfully in Firestore! 🎉")
             st.balloons()
 
+            # ✅ Prevent duplicate execution
+            st.session_state["payment_verified"] = True  
+
             if st.button("Return to App"):
                 st.session_state["current_page"] = "main_page"
                 st.rerun()
         else:
             st.error("⚠️ Payment execution failed. Please contact support.")
+            st.json(payment.error)  # ✅ Show error if execution fails
     except Exception as e:
         st.error(f"❌ Error processing payment: {str(e)}")
 
