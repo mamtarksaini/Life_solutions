@@ -106,50 +106,78 @@ def get_paypal_access_token():
     return response.json()["access_token"]
 
 # ✅ Capture Payment Immediately After Return from PayPal
+import streamlit as st
+import requests
+import firebase_admin
+from firebase_admin import firestore
+from firebase_config import db
+from datetime import datetime, timedelta
+import paypalrestsdk
+
+# ✅ Load API Key securely from Streamlit secrets
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+
+# ✅ PayPal Configuration
+paypalrestsdk.configure({
+    "mode": "sandbox",  # Change to 'live' for production
+    "client_id": st.secrets["paypal"]["PAYPAL_CLIENT_ID"],
+    "client_secret": st.secrets["paypal"]["PAYPAL_CLIENT_SECRET"]
+})
+
+# ✅ Ensure Session Persistence
+if "email" not in st.session_state:
+    st.session_state["email"] = None
+
+# ✅ Payment Success Logic
 def payment_success():
     st.title("✅ Payment Successful!")
 
+    # ✅ Retrieve Query Parameters
     query_params = st.query_params
-    order_id = query_params.get("token", None)  # PayPal now sends "token" as Order ID
-    email = query_params.get("email", None)
+    payment_id = query_params.get("paymentId", [None])[0]
+    payer_id = query_params.get("PayerID", [None])[0]
+    email = query_params.get("email", [None])[0]
 
-    if not order_id:
-        st.error("⚠️ No valid order ID found. Payment may have failed or been canceled.")
-        return
-
-    # ✅ Store email in session
+    # ✅ Restore session email
     if email:
         st.session_state["email"] = email  
 
+    # ✅ Check if parameters exist
+    if not payment_id or not payer_id:
+        st.error("⚠️ No valid payment details found. Payment may have failed or been canceled.")
+        return
+
     try:
-        access_token = get_paypal_access_token()
-        url = f"{PAYPAL_API_URL}/v2/checkout/orders/{order_id}/capture"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {access_token}",
-        }
+        # ✅ Execute PayPal Payment
+        payment = paypalrestsdk.Payment.find(payment_id)
 
-        response = requests.post(url, headers=headers)
+        if payment.execute({"payer_id": payer_id}):  
+            st.success("✅ Thank you for upgrading to Premium! Your subscription is now active.")
 
-        if response.status_code == 201:
-            payment_data = response.json()
-            st.success("✅ Payment Captured Successfully!")
-            
-            transaction_id = payment_data["purchase_units"][0]["payments"]["captures"][0]["id"]
-            transaction_amount = payment_data["purchase_units"][0]["payments"]["captures"][0]["amount"]["value"]
-            transaction_currency = payment_data["purchase_units"][0]["payments"]["captures"][0]["amount"]["currency_code"]
+            # 🔹 Extract transaction details
+            transaction = payment["transactions"][0]["related_resources"][0]["sale"]
+            transaction_id = transaction["id"]
+            transaction_amount = transaction["amount"]["total"]
+            transaction_currency = transaction["amount"]["currency"]
+            transaction_time = transaction["create_time"]
+            transaction_status = transaction["state"]
+
+            # ✅ Ensure transaction is completed
+            if transaction_status.lower() != "completed":
+                st.error(f"⚠️ Payment failed! PayPal returned status: {transaction_status}")
+                return
 
             # ✅ Show transaction details
             st.subheader("📜 Transaction Details:")
             st.write(f"**Transaction ID:** `{transaction_id}`")
             st.write(f"**Amount Paid:** `{transaction_amount} {transaction_currency}`")
+            st.write(f"**Date & Time:** `{transaction_time}`")
 
-            # ✅ Update Firestore
-            email = st.session_state.get("email", "unknown_user")
+            # ✅ Update Firestore User Plan
             user_ref = db.collection("users").document(email)
             user_ref.update({"plan": "premium", "queries": 100})
 
-            # ✅ Store Transaction in Firestore
+            # ✅ Store Transaction Details in Firestore
             transaction_ref = db.collection("transactions").document(transaction_id)
             transaction_ref.set({
                 "email": email,
@@ -157,18 +185,21 @@ def payment_success():
                 "amount": transaction_amount,
                 "currency": transaction_currency,
                 "status": "Completed",
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                "timestamp": transaction_time
             })
 
             st.success("✅ Transaction recorded successfully in Firestore! 🎉")
             st.balloons()
+
+            # ✅ Auto-refresh UI after successful payment
+            st.session_state["payment_verified"] = True
+            st.experimental_rerun()
+
         else:
-            st.error(f"⚠️ Payment Capture Failed: {response.json()}")
+            st.error("⚠️ Payment execution failed. Please contact support.")
     except Exception as e:
         st.error(f"❌ Error processing payment: {str(e)}")
 
-    # ✅ Redirect user to clear query parameters
-    st.rerun()
 
     # ✅ Handle payment cancellation
 def payment_cancel():
@@ -193,14 +224,16 @@ def main_p():
             st.error("❌ Payment failed.")
 
 # ✅ Route Based on URL Params
+# ✅ Route Based on URL Params
 query_params = st.query_params
+page = query_params.get("page", ["main"])[0]
 
-if "page" in query_params:
-    if query_params["page"] == "success":
-        payment_success()
-        st.stop()
-    elif query_params["page"] == "cancel":
-        payment_cancel()
-        st.stop()
+if page == "success":
+    payment_success()
+    st.stop()
+elif page == "cancel":
+    st.title("❌ Payment Cancelled")
+    st.warning("Your payment was not completed. Please try again.")
+    st.stop()
 else:
-    main_p()
+    main_p()  # ✅ Load main page if no payment actions
